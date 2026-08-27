@@ -31,19 +31,40 @@ O projeto cria uma experiência de tribunal interativa na qual o usuário escolh
 
 - Frontend: Next.js / React / TypeScript.
 - Backend: FastAPI / Python.
-- Persistência: SQLAlchemy, com evolução planejada para PostgreSQL em produção.
+- Persistência: SQLAlchemy, com PostgreSQL recomendado para produção.
 - Orquestração: agentes especializados por papel e fase processual.
 
 ## Execução local
 
-Consulte os arquivos de configuração do frontend e backend para instalar as dependências e definir `NEXT_PUBLIC_API_URL` apontando para a API.
+### Frontend
 
-## Próximos marcos
+```bash
+npm install
+npm run dev
+```
 
-- persistência completa da sessão de audiência;
-- geração de personagens e casos;
-- integração de provedores de IA gratuitos;
-- documentos e provas;
-- sentença fundamentada;
-- recursos e julgamento colegiado;
-- testes automatizados e deploy.
+Defina `NEXT_PUBLIC_API_URL=http://localhost:8000` no ambiente do frontend.
+
+### Backend
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+## Deploy
+
+O frontend está preparado para **Vercel** (`vercel.json`). O backend possui Dockerfile e configuração para **Railway** (`backend/railway.toml`).
+
+No backend de produção, configure:
+
+- `DATABASE_URL`
+- `GEMINI_API_KEY` (opcional; sem ela o fallback local permanece disponível)
+- `CORS_ORIGINS` com a URL do frontend publicado
+
+No frontend, configure `NEXT_PUBLIC_API_URL` com a URL pública do backend.
+
+## Status
+
+O backend possui testes automatizados executados pelo GitHub Actions. O próximo marco é publicar frontend e API e realizar o primeiro teste funcional ponta a ponta.

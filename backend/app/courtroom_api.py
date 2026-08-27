@@ -8,6 +8,7 @@ from .court_session import CourtPhase, CourtSession, MessageKind
 from .courtroom import Instance, UserRole, build_courtroom, assess_intervention
 from .hearing_orchestrator import run_next_agent
 from .hearing_rules import decide_intervention, InterventionDisposition
+from .judicial_review import review_intervention
 from .participant_identity import build_user_identity
 from .processes import get_process
 router=APIRouter(prefix="/api/v1/processes/{process_id}/courtroom",tags=["courtroom"])
@@ -39,13 +40,15 @@ def get_session(process_id:UUID,role:UserRole):
     s=_session(process_id,role); identity=_identities.get(s.id); return {"session_id":s.id,"identity":identity.__dict__ if identity else None,"role":s.user_role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages,"appeals":s.appeals}
 @router.post("/session/{role}/messages")
 def send_message(process_id:UUID,role:UserRole,data:MessageCreate):
-    s=_session(process_id,role); turn=next(iter(s.allowed_roles)).value if s.allowed_roles else "none"; assessment=assess_intervention(role=role.value,turn_role=turn,content=data.content); decision=decide_intervention(role in s.allowed_roles,assessment.assessment.value)
-    if decision.disposition is InterventionDisposition.REPRIMAND:
-        m=s.reprimand(); store.add(str(process_id),"reprimand","Magistrado",m.content,"normal"); return {"accepted":False,"message":m,"reason":"out_of_turn","allowed_roles":list(s.allowed_roles),"assessment":assessment.assessment.value}
-    identity=_identities.get(s.id); sender=identity.display_name if identity else role.value; m=s.add_message(sender,MessageKind.USER,data.content,role,assessment.assessment.value); store.add(str(process_id),"hearing_message",sender,data.content,assessment.assessment.value)
-    if decision.disposition is InterventionDisposition.REGISTER:
-        r=s.add_message("Magistrado",MessageKind.RULING,"A intervenção apresenta pertinência com a controvérsia. A palavra é concedida e a manifestação será registrada nos autos.",UserRole.JUDGE,assessment.assessment.value); return {"accepted":True,"message":m,"ruling":r,"exception":True,"assessment":assessment.assessment.value,"phase":s.phase,"allowed_roles":list(s.allowed_roles)}
-    s.accept_turn(); return {"accepted":True,"message":m,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"assessment":assessment.assessment.value}
+    s=_session(process_id,role); p=get_process(process_id); turn=next(iter(s.allowed_roles)).value if s.allowed_roles else "none"; preliminary=assess_intervention(role=role.value,turn_role=turn,content=data.content)
+    facts=get_case_memory(str(process_id)).context(); history=[str(x) for x in s.messages]; judicial=review_intervention(content=data.content,assessment=preliminary.assessment.value,facts=facts,history=history,phase=s.phase.value)
+    allowed=role in s.allowed_roles
+    if not allowed and judicial.action=="ADVERTIR":
+        m=s.reprimand(); store.add(str(process_id),"reprimand","Magistrado",judicial.explanation,"normal"); return {"accepted":False,"message":m,"reason":"out_of_turn","judicial_review":judicial.__dict__,"allowed_roles":list(s.allowed_roles)}
+    identity=_identities.get(s.id); sender=identity.display_name if identity else role.value; m=s.add_message(sender,MessageKind.USER,data.content,role,preliminary.assessment.value); store.add(str(process_id),"hearing_message",sender,data.content,preliminary.assessment.value)
+    if not allowed:
+        r=s.add_message("Magistrado",MessageKind.RULING,judicial.explanation,UserRole.JUDGE,preliminary.assessment.value); return {"accepted":True,"message":m,"ruling":r,"exception":True,"judicial_review":judicial.__dict__,"phase":s.phase,"allowed_roles":list(s.allowed_roles)}
+    s.accept_turn(); return {"accepted":True,"message":m,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"assessment":preliminary.assessment.value}
 @router.post("/session/{role}/agents")
 def agent_message(process_id:UUID,role:UserRole,data:AgentCreate):
     s=_session(process_id,role)

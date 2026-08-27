@@ -2,6 +2,67 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+class Instance(str, Enum):
+    FIRST = "first"
+    SECOND = "second"
+    STJ = "stj"
+    STF = "stf"
+
+
+class UserRole(str, Enum):
+    JUDGE = "judge"
+    PLAINTIFF_ATTORNEY = "plaintiff_attorney"
+    DEFENSE_ATTORNEY = "defense_attorney"
+    PROSECUTOR = "prosecutor"
+    LEGAL_RESEARCHER = "legal_researcher"
+    WITNESS = "witness"
+    EXPERT = "expert"
+    JUROR = "juror"
+
+
+@dataclass(frozen=True)
+class CourtroomParticipant:
+    id: str
+    name: str
+    title: str
+    role: UserRole
+    active: bool = True
+    fictional: bool = True
+
+
+_FIRST_NAMES = [
+    "Helena", "Rafael", "Mariana", "André", "Camila", "Marcelo",
+    "Beatriz", "Ricardo", "Juliana", "Gustavo", "Fernanda", "Eduardo",
+]
+_LAST_NAMES = [
+    "Duarte", "Monteiro", "Freitas", "Vasconcelos", "Nogueira", "Almeida",
+    "Barros", "Mendes", "Carvalho", "Ribeiro", "Teixeira", "Castro",
+]
+
+
+def build_courtroom(*, include_mp: bool = False, jury: bool = False, instance: Instance = Instance.FIRST) -> list[CourtroomParticipant]:
+    names = (f"{first} {last}" for first in _FIRST_NAMES for last in _LAST_NAMES)
+    used: set[str] = set()
+
+    def make(role: UserRole, title: str) -> CourtroomParticipant:
+        name = next(name for name in names if name not in used)
+        used.add(name)
+        return CourtroomParticipant(f"{role.value}_{len(used)}", name, title, role)
+
+    result = [
+        make(UserRole.JUDGE, "Juiz de Direito"),
+        make(UserRole.PLAINTIFF_ATTORNEY, "Advogado(a) do Autor"),
+        make(UserRole.DEFENSE_ATTORNEY, "Advogado(a) do Réu"),
+        make(UserRole.LEGAL_RESEARCHER, "Pesquisador(a) Jurídico(a)"),
+    ]
+    if include_mp:
+        result.append(make(UserRole.PROSECUTOR, "Promotor(a) de Justiça"))
+    if jury:
+        for _ in range(7):
+            result.append(make(UserRole.JUROR, "Jurados do Conselho de Sentença"))
+    return result
+
+
 class InterventionAssessment(str, Enum):
     IRRELEVANT = "irrelevant"
     PERTINENT = "pertinent"

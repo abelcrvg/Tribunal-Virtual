@@ -59,7 +59,9 @@ def _session(pid:UUID,role:UserRole,db:Session):
         s=_restore_session(pid,role,db)
         if s is not None:
             _sessions[key]=s
-            _identities[key]=build_user_identity("local-user",role)
+            locked=db.get(ProcessSessionDB,str(pid))
+            saved_user_id=locked.user_id if locked is not None and locked.user_id else "local-user"
+            _identities[key]=build_user_identity(saved_user_id,role)
     if s is None: raise HTTPException(404,"Sessão não encontrada")
     return s
 @router.post("/session")
@@ -88,14 +90,13 @@ def get_session(process_id:UUID,role:UserRole,db:Session=Depends(get_db)):
     s=_session(process_id,role,db); identity=_identities.get(s.id); return {"session_id":s.id,"identity":identity.__dict__ if identity else None,"role":s.user_role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages,"appeals":s.appeals}
 @router.post("/session/{role}/messages")
 def send_message(process_id:UUID,role:UserRole,data:MessageCreate,db:Session=Depends(get_db)):
-    s=_session(process_id,role,db); turn=next_agent_turn(s); turn_role=turn.role if turn else (next(iter(s.allowed_roles)).value if s.allowed_roles else "none"); preliminary=assess_intervention(role=role.value,turn_role=turn_role,content=data.content); facts=get_case_memory(str(process_id)).context(); history=[str(x) for x in s.messages]; judicial=review_intervention(content=data.content,assessment=preliminary.assessment.value,facts=facts,history=history,phase=s.phase.value); allowed=role.value==turn_role or role in s.allowed_roles
+    s=_session(process_id,role,db); turn=next(iter(s.allowed_roles)).value if s.allowed_roles else "none"; preliminary=assess_intervention(role=role.value,turn_role=turn,content=data.content); facts=get_case_memory(str(process_id)).context(); history=[str(x) for x in s.messages]; judicial=review_intervention(content=data.content,assessment=preliminary.assessment.value,facts=facts,history=history,phase=s.phase.value); allowed=role in s.allowed_roles
     if not allowed and judicial.action=="ADVERTIR":
         m=s.reprimand(); _persist_message(db,str(process_id),m); store.add(str(process_id),"reprimand","Magistrado",judicial.explanation,"normal"); return {"accepted":False,"message":m,"reason":"out_of_turn","judicial_review":judicial.__dict__,"allowed_roles":list(s.allowed_roles)}
     identity=_identities.get(s.id); sender=identity.display_name if identity else role.value; m=s.add_message(sender,MessageKind.USER,data.content,role,preliminary.assessment.value); _persist_message(db,str(process_id),m); store.add(str(process_id),"hearing_message",sender,data.content,preliminary.assessment.value)
-    if role.value==turn_role: s.accept_turn()
-    elif not allowed:
+    if not allowed:
         r=s.add_message("Magistrado",MessageKind.RULING,judicial.explanation,UserRole.JUDGE,preliminary.assessment.value); _persist_message(db,str(process_id),r); return {"accepted":True,"message":m,"ruling":r,"exception":True,"judicial_review":judicial.__dict__,"phase":s.phase,"allowed_roles":list(s.allowed_roles)}
-    return {"accepted":True,"message":m,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"assessment":preliminary.assessment.value}
+    s.accept_turn(); return {"accepted":True,"message":m,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"assessment":preliminary.assessment.value}
 @router.post("/session/{role}/agents")
 def agent_message(process_id:UUID,role:UserRole,data:AgentCreate,db:Session=Depends(get_db)):
     s=_session(process_id,role,db)
@@ -104,19 +105,10 @@ def agent_message(process_id:UUID,role:UserRole,data:AgentCreate,db:Session=Depe
 @router.post("/session/{role}/agents/next")
 def automatic_agent_turn(process_id:UUID,role:UserRole,db:Session=Depends(get_db)):
     s=_session(process_id,role,db); p=_process(process_id,db)
-    try:
-        result=run_next_agent(p,s)
-        if result is None:
-            if s.phase in {CourtPhase.JUDGMENT,CourtPhase.CLOSED}: return {"advanced":False,"phase":s.phase,"message":"Não há outro ato automático nesta audiência."}
-            order=list(CourtPhase); i=order.index(s.phase); s.phase=order[i+1]; s.turn_index=0
-            content=f"Passamos à fase: {s.phase.value}."; store.add(str(process_id),"phase_change","Magistrado",content,"pertinent"); m=s.add_message("Magistrado",MessageKind.RULING,content,UserRole.JUDGE); _persist_message(db,str(process_id),m)
-            result=run_next_agent(p,s)
-            if result is None: return {"advanced":True,"phase":s.phase,"message":m}
-        agent_role=result.get("role")
-        message=s.add_message(result.get("name",result.get("agent","IA")),MessageKind.AGENT,result["content"],UserRole(agent_role) if agent_role in [r.value for r in UserRole] else None)
-        _persist_message(db,str(process_id),message)
-        return {"advanced":True,"phase":s.phase,"agent":result,"message":message,"allowed_roles":list(s.allowed_roles)}
+    try: result=run_next_agent(p,s)
     except Exception as exc: raise HTTPException(502,f"Falha no agente de IA: {exc}") from exc
+    if result is None: return {"advanced":False,"phase":s.phase,"message":"Não há outro agente automático configurado para esta fase."}
+    return {"advanced":True,"phase":s.phase,"agent":result}
 @router.post("/session/{role}/advance")
 def advance_phase(process_id:UUID,role:UserRole,db:Session=Depends(get_db)):
     s=_session(process_id,role,db); order=list(CourtPhase); i=order.index(s.phase)

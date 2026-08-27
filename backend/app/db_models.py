@@ -37,3 +37,9 @@ class ProcessParticipantDB(Base):
     profession:Mapped[str]=mapped_column(String(120))
     fictional:Mapped[bool]=mapped_column(Boolean,default=True)
     process:Mapped[ProcessRecord]=relationship(back_populates="participants")
+class ProcessSessionDB(Base):
+    __tablename__="process_sessions"
+    process_id:Mapped[str]=mapped_column(ForeignKey("processes.id",ondelete="CASCADE"),primary_key=True)
+    user_id:Mapped[str]=mapped_column(String(120),default="local-user")
+    role:Mapped[str]=mapped_column(String(60))
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)

@@ -3,33 +3,43 @@ from enum import Enum
 
 class Instance(str, Enum):
     FIRST="first"; SECOND="second"; STJ="stj"; STF="stf"
+
 class UserRole(str, Enum):
-    JUDGE="judge"; PLAINTIFF="plaintiff"; DEFENDANT="defendant"; PLAINTIFF_ATTORNEY="plaintiff_attorney"; DEFENSE_ATTORNEY="defense_attorney"; PROSECUTOR="prosecutor"; LEGAL_RESEARCHER="legal_researcher"; WITNESS="witness"; EXPERT="expert"; JUROR="juror"; CLERK="clerk"
+    JUDGE="judge"; APPEAL_JUDGE="appeal_judge"; PLAINTIFF="plaintiff"; DEFENDANT="defendant"; VICTIM="victim"; PLAINTIFF_ATTORNEY="plaintiff_attorney"; DEFENSE_ATTORNEY="defense_attorney"; PUBLIC_DEFENDER="public_defender"; PROSECUTOR="prosecutor"; PROSECUTOR_ASSISTANT="prosecutor_assistant"; LEGAL_RESEARCHER="legal_researcher"; WITNESS="witness"; EXPERT="expert"; TECHNICAL_ASSISTANT="technical_assistant"; JUROR="juror"; CLERK="clerk"; BAILIFF="bailiff"
+
 @dataclass(frozen=True)
 class CourtroomParticipant:
     id:str; name:str; title:str; role:UserRole; profession:str="Participante jurídico"; active:bool=True; fictional:bool=True
-_FIRST_NAMES=["Helena","Rafael","Mariana","André","Camila","Marcelo","Beatriz","Ricardo","Juliana","Gustavo","Fernanda","Eduardo"]
-_LAST_NAMES=["Duarte","Monteiro","Freitas","Vasconcelos","Nogueira","Almeida","Barros","Mendes","Carvalho","Ribeiro","Teixeira","Castro"]
-_PROF={UserRole.JUDGE:"Magistratura",UserRole.PLAINTIFF:"Parte autora",UserRole.DEFENDANT:"Parte ré",UserRole.PLAINTIFF_ATTORNEY:"Advocacia",UserRole.DEFENSE_ATTORNEY:"Advocacia",UserRole.PROSECUTOR:"Ministério Público",UserRole.LEGAL_RESEARCHER:"Pesquisa jurídica",UserRole.WITNESS:"Testemunha",UserRole.EXPERT:"Perícia judicial",UserRole.JUROR:"Conselho de Sentença",UserRole.CLERK:"Secretaria judicial"}
+
+_FIRST_NAMES=["Helena","Rafael","Mariana","André","Camila","Marcelo","Beatriz","Ricardo","Juliana","Gustavo","Fernanda","Eduardo","Paula","Felipe","Renata","Bruno","Larissa","Henrique"]
+_LAST_NAMES=["Duarte","Monteiro","Freitas","Vasconcelos","Nogueira","Almeida","Barros","Mendes","Carvalho","Ribeiro","Teixeira","Castro","Ramos","Azevedo","Moura","Cardoso"]
+_PROF={
+ UserRole.JUDGE:"Magistratura",UserRole.APPEAL_JUDGE:"Tribunal",UserRole.PLAINTIFF:"Parte autora",UserRole.DEFENDANT:"Parte ré",UserRole.VICTIM:"Vítima",UserRole.PLAINTIFF_ATTORNEY:"Advocacia",UserRole.DEFENSE_ATTORNEY:"Advocacia",UserRole.PUBLIC_DEFENDER:"Defensoria Pública",UserRole.PROSECUTOR:"Ministério Público",UserRole.PROSECUTOR_ASSISTANT:"Acusação",UserRole.LEGAL_RESEARCHER:"Pesquisa jurídica",UserRole.WITNESS:"Testemunha",UserRole.EXPERT:"Perícia judicial",UserRole.TECHNICAL_ASSISTANT:"Assistência técnica",UserRole.JUROR:"Conselho de Sentença",UserRole.CLERK:"Secretaria judicial",UserRole.BAILIFF:"Oficial de Justiça"}
+
 def build_courtroom(*,include_mp=False,jury=False,instance=Instance.FIRST):
     names=(f"{f} {l}" for f in _FIRST_NAMES for l in _LAST_NAMES); used=set()
-    def make(role,title):
-        name=next(n for n in names if n not in used); used.add(name); return CourtroomParticipant(f"{role.value}_{len(used)}",name,title,role,_PROF[role])
-    result=[make(UserRole.JUDGE,"Juiz de Direito"),make(UserRole.PLAINTIFF,"Parte autora"),make(UserRole.DEFENDANT,"Parte ré"),make(UserRole.PLAINTIFF_ATTORNEY,"Advogado(a) do Autor"),make(UserRole.DEFENSE_ATTORNEY,"Advogado(a) do Réu"),make(UserRole.LEGAL_RESEARCHER,"Pesquisador(a) Jurídico(a)"),make(UserRole.CLERK,"Servidor(a) da Secretaria"),make(UserRole.WITNESS,"Testemunha 1"),make(UserRole.WITNESS,"Testemunha 2"),make(UserRole.EXPERT,"Perito(a)")]
-    if include_mp: result.append(make(UserRole.PROSECUTOR,"Promotor(a) de Justiça"))
+    def make(role,title,active=True):
+        name=next(n for n in names if n not in used); used.add(name); return CourtroomParticipant(f"{role.value}_{len(used)}",name,title,role,_PROF[role],active)
+    result=[make(UserRole.JUDGE,"Juiz de Direito"),make(UserRole.PLAINTIFF,"Parte autora"),make(UserRole.DEFENDANT,"Parte ré"),make(UserRole.PLAINTIFF_ATTORNEY,"Advogado(a) do Autor"),make(UserRole.DEFENSE_ATTORNEY,"Advogado(a) do Réu"),make(UserRole.PUBLIC_DEFENDER,"Defensor(a) Público(a)"),make(UserRole.LEGAL_RESEARCHER,"Pesquisador(a) Jurídico(a)"),make(UserRole.CLERK,"Servidor(a) da Secretaria"),make(UserRole.BAILIFF,"Oficial(a) de Justiça"),make(UserRole.WITNESS,"Testemunha 1"),make(UserRole.WITNESS,"Testemunha 2"),make(UserRole.EXPERT,"Perito(a) Judicial"),make(UserRole.TECHNICAL_ASSISTANT,"Assistente Técnico")]
+    result.append(make(UserRole.VICTIM,"Vítima",active=False))
+    result.append(make(UserRole.PROSECUTOR,"Promotor(a) de Justiça",active=include_mp))
+    result.append(make(UserRole.PROSECUTOR_ASSISTANT,"Assistente de Acusação",active=include_mp))
     if jury:
         for _ in range(7): result.append(make(UserRole.JUROR,"Jurados do Conselho de Sentença"))
+    if instance != Instance.FIRST: result.append(make(UserRole.APPEAL_JUDGE,"Desembargador(a)"))
     return result
+
 class InterventionAssessment(str,Enum):
     IRRELEVANT="irrelevant"; PERTINENT="pertinent"; DECISIVE="decisive"; ABUSIVE="abusive"
 @dataclass(frozen=True)
 class CourtroomDecision:
     assessment:InterventionAssessment; allowed:bool; judge_response:str; requires_record:bool; reason:str
+
 def assess_intervention(*,role,turn_role,content):
     text=content.strip().lower()
     if not text:return CourtroomDecision(InterventionAssessment.IRRELEVANT,False,"A intervenção não contém conteúdo suficiente para análise.",False,"mensagem vazia")
     if any(x in text for x in ("idiota","cala a boca","vai se ferrar","filho da","otário","otaria")):return CourtroomDecision(InterventionAssessment.ABUSIVE,False,"A parte deve manter o respeito e a urbanidade.",False,"linguagem incompatível")
-    terms=("documento","prova","testemunha","contrato","laudo","artigo","lei","fato","depoimento","contradi","omiss","processo","prazo","competência","nulidade","evidência","perícia")
+    terms=("documento","prova","testemunha","contrato","laudo","artigo","lei","fato","depoimento","contradi","omiss","processo","prazo","competência","nulidade","evidência","perícia","quesito","recurso","preliminar","mérito","acusação","defesa")
     relevant=any(x in text for x in terms) or len(text)>=160
     if turn_role==role:return CourtroomDecision(InterventionAssessment.PERTINENT if relevant else InterventionAssessment.IRRELEVANT,True,"A palavra está com a parte. Prossiga com sua manifestação.",relevant,"dentro da vez")
     if relevant:

@@ -8,8 +8,6 @@ class Turn:
     role: str
     instruction: str
 
-# Fluxo-base. A IA deve agir como a personagem, usando os autos e o histórico,
-# e nunca responder com frases genéricas de controle de turno.
 PHASE_TURNS = {
     CourtPhase.OPENING: [
         Turn("judge", "Abra a audiência como magistrado. Identifique nominalmente o participante humano e o papel que ele escolheu. Conduza a abertura de forma natural, contextualizada ao processo e indique o próximo ato. Não use respostas genéricas nem marcadores técnicos."),
@@ -61,6 +59,15 @@ PHASE_TURNS = {
     ],
 }
 
+def _transcript(session: CourtSession) -> str:
+    if not session.messages:
+        return "Nenhuma fala foi registrada ainda."
+    lines = []
+    for m in session.messages:
+        role = m.role.value if m.role else "system"
+        lines.append(f"{m.sender} [{role}]: {m.content}")
+    return "\n".join(lines)
+
 def next_agent_turn(session: CourtSession):
     turns = PHASE_TURNS.get(session.phase, [])
     while session.turn_index < len(turns):
@@ -83,6 +90,17 @@ def run_next_agent(process, session, provider=None):
     turn = next_agent_turn(session)
     if turn is None:
         return None
-    result = run_registered_agent(process, turn.role, turn.instruction, provider)
+    transcript = _transcript(session)
+    contextual_instruction = (
+        f"{turn.instruction}\n\n"
+        "LEIA TODA A TRANSCRIÇÃO DA AUDIÊNCIA ABAIXO ANTES DE RESPONDER. "
+        "Sua fala deve ser uma continuação direta e contextual do que foi dito. "
+        "Responda aos argumentos, perguntas, fatos e contradições já apresentados. "
+        "Nunca reinicie a audiência, repita a abertura, invente uma nova versão do caso ou ignore a última fala. "
+        "Você está falando agora como a personagem indicada no turno.\n\n"
+        "TRANSCRIÇÃO INTEGRAL DA AUDIÊNCIA:\n"
+        f"{transcript}"
+    )
+    result = run_registered_agent(process, turn.role, contextual_instruction, provider)
     session.accept_turn()
     return result

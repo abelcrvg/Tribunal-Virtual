@@ -17,8 +17,10 @@ class ProcessStatus(str, Enum):
     INITIAL_PETITION = "initial_petition"
     ANSWER = "answer"
     REPLY = "reply"
+    EVIDENCE = "evidence"
     JUDICIAL_ANALYSIS = "judicial_analysis"
     SENTENCE = "sentence"
+    APPEAL = "appeal"
     CLOSED = "closed"
 
 
@@ -28,6 +30,7 @@ class ProcessCreate(BaseModel):
     defendant: str = Field(min_length=2, max_length=200)
     facts: str = Field(min_length=20, max_length=10000)
     include_mp: bool = False
+    jury: bool = False
 
 
 class CharacterResponse(BaseModel):

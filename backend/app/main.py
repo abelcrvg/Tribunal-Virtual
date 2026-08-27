@@ -1,0 +1,26 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(
+    title="Tribunal Virtual API",
+    version="0.1.0",
+    description="API do simulador educacional de processos judiciais brasileiros.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "tribunal-virtual-api"}
+
+
+@app.get("/api/v1")
+def api_info() -> dict[str, str]:
+    return {"name": "Tribunal Virtual API", "version": "0.1.0"}

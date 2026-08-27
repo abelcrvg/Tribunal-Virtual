@@ -29,6 +29,8 @@ class ParticipantType(str, Enum):
     EXPERT = "expert"
     CLERK = "clerk"
     JUROR = "juror"
+    APPELLATE_JUDGE = "appellate_judge"
+    REPORTING_JUDGE = "reporting_judge"
 
 
 @dataclass(frozen=True)
@@ -40,7 +42,20 @@ class Participant:
     fictional: bool = True
 
 
-def build_courtroom(include_mp: bool = False, jury: bool = False) -> list[Participant]:
+def build_courtroom(include_mp: bool = False, jury: bool = False, instance: Instance = Instance.FIRST) -> list[Participant]:
+    if instance == Instance.SECOND:
+        participants = [
+            Participant(str(uuid4()), "Desembargador Presidente", ParticipantType.APPELLATE_JUDGE),
+            Participant(str(uuid4()), "Desembargadora Relatora", ParticipantType.REPORTING_JUDGE),
+            Participant(str(uuid4()), "Desembargador Vogal", ParticipantType.APPELLATE_JUDGE),
+            Participant(str(uuid4()), "Representante do recorrente", ParticipantType.ATTORNEY),
+            Participant(str(uuid4()), "Representante do recorrido", ParticipantType.ATTORNEY),
+            Participant(str(uuid4()), "Servidor da secretaria", ParticipantType.CLERK),
+        ]
+        if include_mp:
+            participants.insert(3, Participant(str(uuid4()), "Procurador de Justiça", ParticipantType.PROSECUTOR))
+        return participants
+
     participants = [
         Participant(str(uuid4()), "Magistrado responsável", ParticipantType.JUDGE),
         Participant(str(uuid4()), "Representante do autor", ParticipantType.ATTORNEY, "plaintiff"),
@@ -54,7 +69,7 @@ def build_courtroom(include_mp: bool = False, jury: bool = False) -> list[Partic
         participants.insert(3, Participant(str(uuid4()), "Promotor de Justiça", ParticipantType.PROSECUTOR))
     if jury:
         participants.extend(
-            Participant(str(uuid4()), f"Jurados {i:02d}", ParticipantType.JUROR)
+            Participant(str(uuid4()), f"Jurado {i:02d}", ParticipantType.JUROR)
             for i in range(1, 8)
         )
     return participants

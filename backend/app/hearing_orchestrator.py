@@ -7,15 +7,16 @@ from .simulation import run_registered_agent
 class Turn:
     role: str
     instruction: str
+    spontaneous: bool = False
 
 PHASE_TURNS = {
     CourtPhase.OPENING: [
-        Turn("judge", "Abra a audiência como magistrado. Identifique nominalmente o participante humano e o papel que ele escolheu. Conduza a abertura de forma natural, contextualizada ao processo e indique o próximo ato. Não use respostas genéricas nem marcadores técnicos."),
+        Turn("judge", "Abra a audiência como magistrado. Identifique nominalmente o participante humano e o papel que ele escolheu. Conduza a abertura de forma natural e contextualizada ao processo. Não use respostas genéricas nem marcadores técnicos."),
         Turn("clerk", "Atue como servidor da secretaria e faça somente o registro oral necessário para a abertura, contextualizado ao processo. Seja natural e específico; não produza uma ata completa."),
     ],
     CourtPhase.PLAINTIFF: [
         Turn("plaintiff_attorney", "Atue como advogado do autor. Faça uma manifestação oral específica sobre este processo, usando os fatos, documentos, pedidos e argumentos constantes dos autos. Não diga apenas que a palavra foi concedida; fale como o advogado."),
-        Turn("judge", "Responda como magistrado ao que o advogado efetivamente acabou de dizer. Faça perguntas, esclareça pontos ou determine providências concretas conforme o caso. Não use respostas genéricas como CONCEDER_PALAVRA ou REGISTRAR."),
+        Turn("judge", "Responda como magistrado ao que acabou de ser dito. Reaja ao conteúdo concreto, faça perguntas ou tome uma providência processual específica. Não repita a abertura e não use respostas genéricas de controle de turno."),
     ],
     CourtPhase.DEFENSE: [
         Turn("defense_attorney", "Atue como advogado do réu. Responda aos fatos, argumentos e provas efetivamente apresentados até agora. Construa e defenda a tese da ré, inclusive rebatendo diretamente a última manifestação. Fale como advogado, sem petição completa."),
@@ -59,17 +60,59 @@ PHASE_TURNS = {
     ],
 }
 
+RESPONDERS = {
+    "plaintiff_attorney": ["defense_attorney", "judge"],
+    "defense_attorney": ["plaintiff_attorney", "judge"],
+    "public_defender": ["prosecutor", "judge"],
+    "prosecutor": ["defense_attorney", "plaintiff_attorney", "judge"],
+    "prosecutor_assistant": ["defense_attorney", "judge"],
+    "expert": ["judge", "plaintiff_attorney", "defense_attorney"],
+    "technical_assistant": ["expert", "judge"],
+    "witness": ["judge", "plaintiff_attorney", "defense_attorney"],
+    "plaintiff": ["defense_attorney", "judge"],
+    "defendant": ["plaintiff_attorney", "judge"],
+    "victim": ["judge", "defense_attorney"],
+    "juror": ["judge"],
+    "judge": ["plaintiff_attorney", "defense_attorney", "prosecutor"],
+    "clerk": ["judge"],
+    "bailiff": ["judge"],
+    "legal_researcher": ["judge"],
+    "appeal_judge": ["plaintiff_attorney", "defense_attorney", "prosecutor"],
+}
+
 def _transcript(session: CourtSession) -> str:
     if not session.messages:
         return "Nenhuma fala foi registrada ainda."
     return "\n".join(f"{m.sender} [{m.role.value if m.role else 'system'}]: {m.content}" for m in session.messages)
+
+def _responsive_role(session: CourtSession) -> str | None:
+    candidates = RESPONDERS.get(session.user_role.value, ["judge"])
+    phase_roles = {t.role for t in PHASE_TURNS.get(session.phase, [])}
+    for role in candidates:
+        if role != session.user_role.value and agent_for(role) is not None and (role in phase_roles or not phase_roles):
+            return role
+    for role in candidates:
+        if role != session.user_role.value and agent_for(role) is not None:
+            return role
+    return None
+
+def _spontaneous_turn(session: CourtSession) -> Turn | None:
+    role = _responsive_role(session)
+    if role is None:
+        return None
+    return Turn(role, (
+        f"Atue agora como {role} em resposta a uma intervenção espontânea do participante humano. "
+        "A intervenção deve ser tratada como parte legítima do debate. Não bloqueie a fala, não diga que está fora da vez e não responda com advertência automática. "
+        "Leia a última manifestação e a transcrição inteira. Responda diretamente ao conteúdo, podendo concordar, discordar, questionar, objetar, pedir esclarecimento ou provocar decisão, conforme a personalidade e função da personagem. "
+        "Não avance de fase somente por causa desta intervenção e não introduza um novo ato sem fundamento no histórico."
+    ), True)
 
 def next_agent_turn(session: CourtSession):
     turns = PHASE_TURNS.get(session.phase, [])
     while session.turn_index < len(turns):
         turn = turns[session.turn_index]
         if turn.role == session.user_role.value:
-            return None
+            return _spontaneous_turn(session)
         if agent_for(turn.role) is None:
             session.turn_index += 1
             continue
@@ -81,6 +124,7 @@ def peek_turn(session: CourtSession):
     return turns[session.turn_index] if session.turn_index < len(turns) else None
 
 def run_next_agent(process, session, provider=None):
+    scheduled = peek_turn(session)
     turn = next_agent_turn(session)
     if turn is None:
         return None
@@ -91,9 +135,10 @@ def run_next_agent(process, session, provider=None):
         "Responda ao conteúdo da última manifestação e às informações relevantes acumuladas. "
         "Nunca reinicie a audiência, nunca repita a abertura e nunca troque de personagem. "
         "Não diga apenas que vai registrar, conceder palavra ou prosseguir: faça a manifestação, pergunta, resposta ou decisão concreta que a personagem faria.\n\n"
-        "TRANSCRIÇÃO INTEGRAL:\n"
-        f"{transcript}"
+        f"TRANSCRIÇÃO INTEGRAL:\n{transcript}"
     )
     result = run_registered_agent(process, turn.role, contextual_instruction, provider, session=session)
-    session.accept_turn()
+    # Spontaneous replies answer the human without consuming a scheduled turn.
+    if not turn.spontaneous and scheduled is not None:
+        session.accept_turn()
     return result

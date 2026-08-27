@@ -3,15 +3,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from .appeals import AppealType, analyze_appeal
+from .case_generator import generate_case
 from .case_memory import ProcessEvent, get_case_memory
 from .case_store import store
 from .chat import submit_message
 from .courtroom import assess_intervention
 from .database import get_db
-from .models import Process, ProcessCreate
+from .models import CaseGenerationRequest, Process, ProcessCreate
 from .participants import generate_participants
 from .persistence import create_process_db, get_process_db, list_processes_db
 from .simulation import run_defense_agent, run_full_simulation, run_judge_agent, run_plaintiff_agent, run_research_agent
+from .ai_provider import get_provider
 router=APIRouter(prefix="/api/v1/processes",tags=["processes"])
 class InterventionRequest(BaseModel): role:str=Field(min_length=2,max_length=80); turn_role:str=Field(min_length=2,max_length=80); content:str=Field(min_length=1,max_length=10000)
 class EventRequest(BaseModel): type:str=Field(min_length=2,max_length=80); actor:str=Field(min_length=2,max_length=120); content:str=Field(min_length=1,max_length=10000); relevance:str=Field(default="normal",max_length=20)
@@ -22,15 +24,25 @@ def _get_process(process_id:UUID,db:Session)->Process:
  if process is None: raise HTTPException(404,"Processo não encontrado")
  return process
 @router.post("",response_model=Process,status_code=201)
-def create_new_process(data:ProcessCreate,db:Session=Depends(get_db))->Process:
- count=len(list_processes_db(db))+1; number=f"{count:06d}-2026.TV"; return create_process_db(db,data,number)
+def create_new_process(data:CaseGenerationRequest,db:Session=Depends(get_db))->Process:
+ try: generated=generate_case(data.area.value,data.case_type,data.include_mp,data.jury,get_provider())
+ except Exception as exc: raise HTTPException(503,detail=f"Não foi possível gerar o caso: {exc}") from exc
+ include_mp=bool(generated.get("include_mp",data.include_mp)); jury=bool(generated.get("jury",data.jury))
+ if data.area.value!="criminal": jury=False
+ if data.area.value=="criminal": include_mp=True if data.include_mp or generated.get("include_mp") else False
+ facts=f"{generated['title']}\n\n{generated['facts']}\n\nQuestão central: {generated['legal_issue']}\n\nProvas indicadas: " + "; ".join(str(x) for x in generated.get("evidence",[])) + f"\n\nProcedimento: {generated.get('procedure','procedimento comum')}"
+ create=ProcessCreate(area=data.area,plaintiff=generated["plaintiff"],defendant=generated["defendant"],facts=facts,include_mp=include_mp,jury=jury)
+ count=len(list_processes_db(db))+1; number=f"{count:06d}-2026.TV"; process=create_process_db(db,create,number)
+ store.add(str(process.id),"case_generated","IA",facts,"decisive")
+ return process
 @router.get("",response_model=list[Process])
 def get_processes(db:Session=Depends(get_db))->list[Process]: return list_processes_db(db)
 @router.get("/{process_id}",response_model=Process)
 def get_process_by_id(process_id:UUID,db:Session=Depends(get_db))->Process: return _get_process(process_id,db)
 @router.get("/{process_id}/participants",tags=["courtroom"])
 def participants(process_id:UUID,db:Session=Depends(get_db)):
- process=_get_process(process_id,db); return [p.__dict__ for p in generate_participants(seed=sum(process.number.encode()),include_mp=process.include_mp,jury=process.jury,witnesses=3,experts=1)]
+ process=_get_process(process_id,db); witness_count=4 if process.area.value=="criminal" else 3; expert_count=1 if process.area.value in {"civil","labor","criminal"} else 0
+ return [p.__dict__ for p in generate_participants(seed=sum(process.number.encode()),include_mp=process.include_mp,jury=process.jury,witnesses=witness_count,experts=expert_count)]
 @router.get("/{process_id}/memory",tags=["courtroom"])
 def process_memory(process_id:UUID,db:Session=Depends(get_db)):
  _get_process(process_id,db); return {"legacy":get_case_memory(str(process_id)).context(),"store":store.snapshot(str(process_id))}

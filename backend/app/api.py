@@ -1,14 +1,22 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .courtroom import assess_intervention
 from .database import get_db
 from .models import Process, ProcessCreate
 from .persistence import create_process_db, get_process_db, list_processes_db
 from .simulation import run_defense_agent, run_full_simulation, run_judge_agent, run_plaintiff_agent, run_research_agent
 
 router = APIRouter(prefix="/api/v1/processes", tags=["processes"])
+
+
+class InterventionRequest(BaseModel):
+    role: str = Field(min_length=2, max_length=80)
+    turn_role: str = Field(min_length=2, max_length=80)
+    content: str = Field(min_length=1, max_length=10000)
 
 
 def _get_process(process_id: UUID, db: Session) -> Process:
@@ -33,6 +41,19 @@ def get_processes(db: Session = Depends(get_db)) -> list[Process]:
 @router.get("/{process_id}", response_model=Process)
 def get_process_by_id(process_id: UUID, db: Session = Depends(get_db)) -> Process:
     return _get_process(process_id, db)
+
+
+@router.post("/{process_id}/courtroom/intervention", tags=["courtroom"])
+def courtroom_intervention(process_id: UUID, data: InterventionRequest, db: Session = Depends(get_db)):
+    _get_process(process_id, db)
+    decision = assess_intervention(role=data.role, turn_role=data.turn_role, content=data.content)
+    return {
+        "assessment": decision.assessment.value,
+        "allowed": decision.allowed,
+        "judge_response": decision.judge_response,
+        "requires_record": decision.requires_record,
+        "reason": decision.reason,
+    }
 
 
 @router.post("/{process_id}/agents/plaintiff", tags=["simulation"])

@@ -37,12 +37,15 @@ class CourtroomDecision:
 
 def assess_intervention(*,role,turn_role,content):
     text=content.strip().lower()
-    if not text:return CourtroomDecision(InterventionAssessment.IRRELEVANT,False,"A intervenção não contém conteúdo suficiente para análise.",False,"mensagem vazia")
-    if any(x in text for x in ("idiota","cala a boca","vai se ferrar","filho da","otário","otaria")):return CourtroomDecision(InterventionAssessment.ABUSIVE,False,"A parte deve manter o respeito e a urbanidade.",False,"linguagem incompatível")
+    if not text:return CourtroomDecision(InterventionAssessment.IRRELEVANT,True,"",False,"mensagem vazia")
+    if any(x in text for x in ("idiota","cala a boca","vai se ferrar","filho da","otário","otaria")):
+        # Linguagem inadequada continua sendo um fato que o juiz pode discutir;
+        # a intervenção humana, porém, nunca é bloqueada pelo sistema.
+        return CourtroomDecision(InterventionAssessment.ABUSIVE,True,"",True,"linguagem incompatível")
     terms=("documento","prova","testemunha","contrato","laudo","artigo","lei","fato","depoimento","contradi","omiss","processo","prazo","competência","nulidade","evidência","perícia","quesito","recurso","preliminar","mérito","acusação","defesa")
     relevant=any(x in text for x in terms) or len(text)>=160
-    if turn_role==role:return CourtroomDecision(InterventionAssessment.PERTINENT if relevant else InterventionAssessment.IRRELEVANT,True,"A palavra está com a parte. Prossiga com sua manifestação.",relevant,"dentro da vez")
+    if turn_role==role:return CourtroomDecision(InterventionAssessment.PERTINENT if relevant else InterventionAssessment.IRRELEVANT,True,"",relevant,"dentro da vez")
     if relevant:
         decisive=any(x in text for x in ("contradiz","prova que","demonstra que","documento original","falsidade","incompatível","erro material","omissão relevante","nulidade")) or len(text)>=320
-        return CourtroomDecision(InterventionAssessment.DECISIVE if decisive else InterventionAssessment.PERTINENT,True,"A intervenção fora da ordem apresenta pertinência com a controvérsia. A palavra é concedida para esclarecimento e a manifestação será registrada.",True,"exceção por relevância")
-    return CourtroomDecision(InterventionAssessment.IRRELEVANT,False,"A palavra permanece com quem está se manifestando. A intervenção não apresenta pertinência suficiente neste momento.",False,"fora da vez")
+        return CourtroomDecision(InterventionAssessment.DECISIVE if decisive else InterventionAssessment.PERTINENT,True,"",True,"intervenção relevante")
+    return CourtroomDecision(InterventionAssessment.IRRELEVANT,True,"",False,"intervenção livre")

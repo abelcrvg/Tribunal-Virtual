@@ -13,6 +13,8 @@ def to_domain(record: ProcessRecord) -> Process:
         plaintiff=record.plaintiff,
         defendant=record.defendant,
         facts=record.facts,
+        include_mp=record.include_mp,
+        jury=record.jury,
         status=record.status,
         created_at=record.created_at,
     )

@@ -28,16 +28,29 @@ PHASE_PROMPTS = {
     CourtPhase.JUDGMENT: "Redija uma decisão fundamentada, enfrentando as questões relevantes registradas durante a audiência.",
 }
 
+PHASE_NEXT = {
+    CourtPhase.OPENING: CourtPhase.PLAINTIFF,
+    CourtPhase.PLAINTIFF: CourtPhase.DEFENSE,
+    CourtPhase.DEFENSE: CourtPhase.WITNESS_PLAINTIFF,
+    CourtPhase.WITNESS_PLAINTIFF: CourtPhase.WITNESS_DEFENSE,
+    CourtPhase.WITNESS_DEFENSE: CourtPhase.EXPERT,
+    CourtPhase.EXPERT: CourtPhase.MP,
+    CourtPhase.MP: CourtPhase.CLOSING,
+    CourtPhase.CLOSING: CourtPhase.DELIBERATION,
+    CourtPhase.DELIBERATION: CourtPhase.JUDGMENT,
+    CourtPhase.JUDGMENT: CourtPhase.CLOSED,
+}
+
 
 def build_agent_instruction(session: CourtSession, role: UserRole, case_context: dict) -> str:
-    memory = case_context.get("events", [])[-15:]
+    memory = case_context.get("events", [])[-20:]
     facts = case_context.get("disputed_facts", [])[-10:]
     return (
         f"Você é o agente jurídico do papel {role.value} em uma simulação educacional de processo brasileiro. "
         f"A fase atual é {session.phase.value}. {PHASE_PROMPTS.get(session.phase, 'Atue de acordo com a fase processual.')} "
-        "Não invente documentos, leis, fatos ou depoimentos que não estejam disponíveis. "
-        "Diferencie alegação de fato comprovado. Se uma manifestação anterior relevante contrariar sua posição, enfrente-a. "
-        f"Questões controvertidas registradas: {facts}. Eventos recentes: {memory}."
+        "Respeite estritamente o papel, a fase e o contraditório. Não invente documentos, leis, fatos ou depoimentos. "
+        "Diferencie alegação de fato comprovado. Enfrente argumentos relevantes anteriores quando necessário. "
+        f"Questões controvertidas: {facts}. Eventos recentes: {memory}."
     )
 
 
@@ -45,3 +58,8 @@ def register_agent_reply(session: CourtSession, role: UserRole, sender: str, con
     message = session.add_message(sender, MessageKind.AGENT, content)
     store.add(session.process_id, "agent_message", sender, content, "pertinent")
     return AgentReply(message.id, role, sender, content, session.phase)
+
+
+def next_phase(session: CourtSession) -> CourtPhase:
+    session.phase = PHASE_NEXT.get(session.phase, CourtPhase.CLOSED)
+    return session.phase

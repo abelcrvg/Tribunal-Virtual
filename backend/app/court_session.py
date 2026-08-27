@@ -41,6 +41,8 @@ class ChatMessage:
     sender: str
     kind: MessageKind
     content: str
+    role: UserRole | None = None
+    assessment: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -57,21 +59,16 @@ class Appeal:
     review_body: str = ""
 
 
-APPEAL_ROLES = {
-    UserRole.PLAINTIFF_ATTORNEY,
-    UserRole.DEFENSE_ATTORNEY,
-    UserRole.PROSECUTOR,
-}
-
+APPEAL_ROLES = {UserRole.PLAINTIFF_ATTORNEY, UserRole.DEFENSE_ATTORNEY, UserRole.PROSECUTOR}
 
 PHASE_ALLOWED_ROLES: dict[CourtPhase, set[UserRole]] = {
     CourtPhase.OPENING: {UserRole.JUDGE},
     CourtPhase.PLAINTIFF: {UserRole.PLAINTIFF_ATTORNEY},
     CourtPhase.DEFENSE: {UserRole.DEFENSE_ATTORNEY},
-    CourtPhase.WITNESS_PLAINTIFF: {UserRole.PLAINTIFF_ATTORNEY, UserRole.DEFENSE_ATTORNEY},
-    CourtPhase.WITNESS_DEFENSE: {UserRole.PLAINTIFF_ATTORNEY, UserRole.DEFENSE_ATTORNEY},
+    CourtPhase.WITNESS_PLAINTIFF: {UserRole.PLAINTIFF_ATTORNEY, UserRole.DEFENSE_ATTORNEY, UserRole.JUDGE},
+    CourtPhase.WITNESS_DEFENSE: {UserRole.PLAINTIFF_ATTORNEY, UserRole.DEFENSE_ATTORNEY, UserRole.JUDGE},
     CourtPhase.EXPERT: {UserRole.PLAINTIFF_ATTORNEY, UserRole.DEFENSE_ATTORNEY, UserRole.JUDGE},
-    CourtPhase.MP: {UserRole.PROSECUTOR},
+    CourtPhase.MP: {UserRole.PROSECUTOR, UserRole.JUDGE},
     CourtPhase.CLOSING: {UserRole.PLAINTIFF_ATTORNEY, UserRole.DEFENSE_ATTORNEY, UserRole.PROSECUTOR},
     CourtPhase.DELIBERATION: {UserRole.JUDGE, UserRole.JUROR},
     CourtPhase.JUDGMENT: {UserRole.JUDGE},
@@ -88,25 +85,24 @@ class CourtSession:
     phase: CourtPhase = CourtPhase.OPENING
     messages: list[ChatMessage] = field(default_factory=list)
     appeals: list[Appeal] = field(default_factory=list)
+    reprimands: int = 0
 
     @property
     def allowed_roles(self) -> set[UserRole]:
         return PHASE_ALLOWED_ROLES[self.phase]
 
-    def add_message(self, sender: str, kind: MessageKind, content: str) -> ChatMessage:
-        message = ChatMessage(str(uuid4()), sender, kind, content)
+    def add_message(self, sender: str, kind: MessageKind, content: str, role: UserRole | None = None, assessment: str | None = None) -> ChatMessage:
+        message = ChatMessage(str(uuid4()), sender, kind, content, role, assessment)
         self.messages.append(message)
         return message
 
-    def user_can_speak(self) -> bool:
-        return self.user_role in self.allowed_roles
-
     def reprimand(self) -> ChatMessage:
-        return self.add_message(
-            "Magistrado",
-            MessageKind.RULING,
-            "Peço ordem. Sua intervenção não está autorizada nesta fase da audiência. A palavra será concedida no momento processual adequado.",
-        )
+        self.reprimands += 1
+        if self.reprimands >= 3:
+            text = "A parte já foi advertida reiteradamente. Nova intervenção sem pertinência poderá ser desconsiderada pelo juízo."
+        else:
+            text = "Peço ordem. Sua intervenção não está autorizada nesta fase. Se houver questão processual relevante, apresente-a objetivamente para apreciação do juízo."
+        return self.add_message("Magistrado", MessageKind.RULING, text, UserRole.JUDGE, "procedural")
 
     def file_appeal(self, appeal_type: str, reason: str) -> Appeal:
         if self.user_role not in APPEAL_ROLES:
@@ -115,20 +111,7 @@ class CourtSession:
             raise ValueError("O recurso só pode ser apresentado após uma decisão recorrível.")
         if self.instance == Instance.STF:
             raise ValueError("Não há instância recursal superior modelada após o STF.")
-
-        target = {
-            Instance.FIRST: Instance.SECOND,
-            Instance.SECOND: Instance.STJ,
-            Instance.STJ: Instance.STF,
-        }[self.instance]
-        appeal = Appeal(
-            id=str(uuid4()),
-            process_id=self.process_id,
-            appellant_role=self.user_role,
-            type=appeal_type,
-            reason=reason,
-            from_instance=self.instance,
-            target_instance=target,
-        )
+        target = {Instance.FIRST: Instance.SECOND, Instance.SECOND: Instance.STJ, Instance.STJ: Instance.STF}[self.instance]
+        appeal = Appeal(str(uuid4()), self.process_id, self.user_role, appeal_type, reason, self.instance, target)
         self.appeals.append(appeal)
         return appeal

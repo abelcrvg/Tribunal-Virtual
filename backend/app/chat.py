@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from .case_memory import ProcessEvent, get_case_memory
+from .case_store import store
 from .courtroom import assess_intervention
 
 
@@ -21,16 +22,9 @@ class ChatMessage:
 def submit_message(*, process_id: str, role: str, turn_role: str, actor: str, content: str) -> ChatMessage:
     decision = assess_intervention(role=role, turn_role=turn_role, content=content)
     now = datetime.now(timezone.utc)
-    message = ChatMessage(
-        id=str(uuid4()),
-        process_id=process_id,
-        actor=actor,
-        role=role,
-        content=content,
-        accepted=decision.allowed,
-        assessment=decision.assessment.value,
-        created_at=now,
-    )
-    memory = get_case_memory(process_id)
-    memory.record(ProcessEvent(type="chat_message" if decision.allowed else "procedural_intervention", actor=actor, content=content, relevance=decision.assessment.value))
+    message = ChatMessage(str(uuid4()), process_id, actor, role, content, decision.allowed, decision.assessment.value, now)
+
+    event_type = "chat_message" if decision.allowed else "procedural_intervention"
+    get_case_memory(process_id).record(ProcessEvent(type=event_type, actor=actor, content=content, relevance=decision.assessment.value))
+    store.add(process_id, event_type, actor, content, decision.assessment.value)
     return message

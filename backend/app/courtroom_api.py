@@ -11,7 +11,7 @@ from .case_memory import get_case_memory
 from .court_session import CourtPhase, CourtSession, MessageKind, ChatMessage
 from .courtroom import Instance, UserRole, build_courtroom, assess_intervention
 from .database import get_db
-from .db_models import ProcessEventDB
+from .db_models import ProcessEventDB, ProcessSessionDB
 from .hearing_orchestrator import run_next_agent
 from .judicial_review import review_intervention
 from .participant_identity import build_user_identity
@@ -64,7 +64,13 @@ def _session(pid:UUID,role:UserRole,db:Session):
     return s
 @router.post("/session")
 def create_session(process_id:UUID,data:SessionCreate,db:Session=Depends(get_db)):
-    p=_process(process_id,db); key=f"{process_id}:{data.role.value}"; existing=_sessions.get(key) or _restore_session(process_id,data.role,db)
+    p=_process(process_id,db)
+    locked=db.get(ProcessSessionDB,str(process_id))
+    if locked is not None and locked.role!=data.role.value:
+        raise HTTPException(409,detail=f"O papel desta simulação já foi definido como {locked.role}. Não é possível trocá-lo depois do início do julgamento.")
+    if locked is None:
+        db.add(ProcessSessionDB(process_id=str(process_id),user_id=data.user_id,role=data.role.value)); db.commit()
+    key=f"{process_id}:{data.role.value}"; existing=_sessions.get(key) or _restore_session(process_id,data.role,db)
     if existing is not None:
         _sessions[key]=existing; _identities.setdefault(key,build_user_identity(data.user_id,data.role)); return {"session_id":key,"identity":_identities[key].__dict__,"role":data.role,"instance":existing.instance,"phase":existing.phase,"allowed_roles":list(existing.allowed_roles),"messages":existing.messages}
     s=CourtSession(id=key,process_id=str(process_id),user_role=data.role); _identities[key]=build_user_identity(data.user_id,data.role)
@@ -77,6 +83,8 @@ def participants(process_id:UUID,instance:Instance=Instance.FIRST,db:Session=Dep
     p=_process(process_id,db); return {"instance":instance,"participants":[x.__dict__ for x in build_courtroom(include_mp=p.include_mp,jury=p.jury,instance=instance)]}
 @router.get("/session/{role}")
 def get_session(process_id:UUID,role:UserRole,db:Session=Depends(get_db)):
+    locked=db.get(ProcessSessionDB,str(process_id))
+    if locked is not None and locked.role!=role.value: raise HTTPException(409,"Esta simulação foi iniciada com outro papel.")
     s=_session(process_id,role,db); identity=_identities.get(s.id); return {"session_id":s.id,"identity":identity.__dict__ if identity else None,"role":s.user_role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages,"appeals":s.appeals}
 @router.post("/session/{role}/messages")
 def send_message(process_id:UUID,role:UserRole,data:MessageCreate,db:Session=Depends(get_db)):

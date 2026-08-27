@@ -8,61 +8,61 @@ class Turn:
     role: str
     instruction: str
 
+# Fluxo-base. A IA deve agir como a personagem, usando os autos e o histórico,
+# e nunca responder com frases genéricas de controle de turno.
 PHASE_TURNS = {
     CourtPhase.OPENING: [
-        Turn("judge", "Conduza oralmente a abertura da audiência. Identifique expressamente o participante humano pelo nome e pelo papel que ele escolheu. Registre a presença, explique brevemente o ato e indique quem terá a palavra primeiro. Não redija termo, ata, decisão ou sentença."),
-        Turn("clerk", "Faça apenas o registro oral/formal necessário da audiência, em manifestação curta. Não produza termo ou documento completo."),
+        Turn("judge", "Abra a audiência como magistrado. Identifique nominalmente o participante humano e o papel que ele escolheu. Conduza a abertura de forma natural, contextualizada ao processo e indique o próximo ato. Não use respostas genéricas nem marcadores técnicos."),
+        Turn("clerk", "Atue como servidor da secretaria e faça somente o registro oral necessário para a abertura, contextualizado ao processo. Seja natural e específico; não produza uma ata completa."),
     ],
     CourtPhase.PLAINTIFF: [
-        Turn("plaintiff_attorney", "Atue oralmente como advogado do autor. Apresente a manifestação adequada à fase, de forma natural e como fala em audiência. Não redija petição completa."),
-        Turn("judge", "Conduza oralmente a audiência após a manifestação do autor. Se necessário, faça pergunta processual pertinente e encaminhe o ato seguinte. Não redija decisão completa."),
+        Turn("plaintiff_attorney", "Atue como advogado do autor. Faça uma manifestação oral específica sobre este processo, usando os fatos, documentos, pedidos e argumentos constantes dos autos. Não diga apenas que a palavra foi concedida; fale como o advogado."),
+        Turn("judge", "Responda como magistrado ao que o advogado efetivamente acabou de dizer. Faça perguntas, esclareça pontos ou determine providências concretas conforme o caso. Não use respostas genéricas como CONCEDER_PALAVRA ou REGISTRAR."),
     ],
     CourtPhase.DEFENSE: [
-        Turn("defense_attorney", "Atue oralmente como advogado do réu. Apresente a defesa adequada à fase, enfrentando somente fatos, provas e argumentos efetivamente registrados nos autos. Não redija contestação ou petição completa."),
-        Turn("plaintiff_attorney", "Atue oralmente como advogado do autor e responda aos pontos novos da defesa. Faça réplica oral ou manifestação de resposta, sem antecipar sentença."),
-        Turn("judge", "Conduza oralmente o encerramento desta etapa. Delimite brevemente as questões que precisam de prova ou providência. Não produza decisão saneadora completa."),
+        Turn("defense_attorney", "Atue como advogado do réu. Faça uma manifestação oral específica e argumentativa sobre os fatos e provas deste processo. Enfrente diretamente as alegações da parte autora e desenvolva uma tese defensiva própria. Não apenas anuncie que falará."),
+        Turn("plaintiff_attorney", "Responda oralmente como advogado do autor aos argumentos efetivamente apresentados pela defesa. Ataque contradições, fatos, provas e fundamentos jurídicos concretos deste processo. Não produza petição."),
+        Turn("judge", "Conduza oralmente a audiência reagindo ao debate que realmente ocorreu. Faça perguntas ou determine providências processuais concretas relacionadas aos pontos controvertidos. Não produza decisão genérica."),
     ],
     CourtPhase.WITNESS_PLAINTIFF: [
-        Turn("judge", "Chame a testemunha indicada pelo autor, faça sua qualificação e formule perguntas iniciais pertinentes. Fale oralmente, sem produzir termo."),
-        Turn("witness", "Preste depoimento oral como testemunha do autor, limitando-se ao que a personagem poderia saber pessoalmente."),
-        Turn("defense_attorney", "Faça oralmente perguntas à testemunha do autor, buscando esclarecer ou contraditar pontos relevantes. Não escreva petição."),
-        Turn("judge", "Registre oralmente o encerramento desta oitiva e determine o próximo ato."),
+        Turn("judge", "Chame nominalmente a testemunha do autor, qualifique-a e faça perguntas concretas relacionadas aos fatos controvertidos deste processo."),
+        Turn("witness", "Responda como a testemunha específica deste caso. Relate fatos que poderia ter presenciado pessoalmente, com detalhes coerentes com os autos. Não invente conhecimento técnico ou jurídico."),
+        Turn("defense_attorney", "Faça perguntas concretas à testemunha do autor, explorando pontos favoráveis à defesa, contradições ou lacunas no depoimento que acabou de ocorrer."),
+        Turn("judge", "Reaja ao depoimento e às perguntas que ocorreram. Esclareça pontos necessários e encerre a oitiva de forma natural, determinando o próximo ato."),
     ],
     CourtPhase.WITNESS_DEFENSE: [
-        Turn("judge", "Chame a testemunha indicada pela defesa, faça sua qualificação e formule perguntas iniciais pertinentes. Fale oralmente, sem produzir termo."),
-        Turn("witness", "Preste depoimento oral como testemunha da defesa, respeitando estritamente os fatos que poderia conhecer pessoalmente."),
-        Turn("plaintiff_attorney", "Faça oralmente perguntas à testemunha da defesa, explorando contradições e pontos controvertidos."),
-        Turn("judge", "Registre oralmente o encerramento desta oitiva e determine o próximo ato."),
+        Turn("judge", "Chame nominalmente a testemunha da defesa, qualifique-a e formule perguntas concretas sobre os fatos controvertidos deste processo."),
+        Turn("witness", "Responda como a testemunha específica da defesa, relatando apenas fatos que poderia conhecer pessoalmente e mantendo coerência com os autos e com perguntas anteriores."),
+        Turn("plaintiff_attorney", "Faça perguntas concretas à testemunha da defesa, explorando contradições, limitações do conhecimento da testemunha e pontos favoráveis ao autor."),
+        Turn("judge", "Reaja ao depoimento e às perguntas efetivamente feitas. Faça os esclarecimentos necessários e encerre a oitiva de maneira contextualizada."),
     ],
     CourtPhase.EXPERT: [
-        Turn("judge", "Apresente oralmente o objeto da perícia e os pontos que precisam de esclarecimento. Não redija laudo ou decisão completa."),
-        Turn("expert", "Atue como perito judicial e apresente oralmente os principais achados, método e conclusões técnicas, exclusivamente com base nos autos."),
-        Turn("plaintiff_attorney", "Formule oralmente perguntas ou pedidos de esclarecimento pertinentes ao laudo."),
-        Turn("defense_attorney", "Formule oralmente perguntas ou pedidos de esclarecimento pertinentes ao laudo."),
-        Turn("judge", "Registre oralmente os esclarecimentos e determine o prosseguimento adequado."),
+        Turn("judge", "Apresente ao perito os pontos técnicos concretos que precisam ser esclarecidos neste processo e formule perguntas específicas."),
+        Turn("expert", "Atue como perito judicial deste processo. Explique método, elementos examinados, achados e conclusões técnicas com detalhes compatíveis com os autos. Não dê opinião jurídica e não responda genericamente."),
+        Turn("plaintiff_attorney", "Faça perguntas técnicas concretas ao perito sobre os pontos que interessam à parte autora, reagindo às conclusões que ele acabou de apresentar."),
+        Turn("defense_attorney", "Faça perguntas técnicas concretas ao perito sobre os pontos que interessam à defesa, reagindo às respostas e conclusões já apresentadas."),
+        Turn("judge", "Esclareça eventuais pontos técnicos restantes e encerre a participação do perito de forma contextualizada, determinando o próximo ato."),
     ],
     CourtPhase.MP: [
-        Turn("prosecutor", "Manifeste-se oralmente pelo Ministério Público somente se sua intervenção for cabível no caso. Seja objetivo e não produza peça escrita."),
-        Turn("judge", "Registre oralmente a manifestação do Ministério Público e determine o próximo ato. Não produza sentença."),
+        Turn("prosecutor", "Atue como Promotor de Justiça. Analise este caso concreto e manifeste-se somente se houver hipótese de intervenção do Ministério Público. Se houver, fundamente a manifestação nos fatos e na natureza do processo; se não houver, explique objetivamente por que a intervenção não é cabível. Fale como membro do MP, não como narrador."),
+        Turn("judge", "Responda especificamente à manifestação do Ministério Público e determine a providência processual cabível neste caso. Não use fórmula genérica."),
     ],
     CourtPhase.CLOSING: [
-        Turn("plaintiff_attorney", "Apresente oralmente as alegações finais da parte autora, enfrentando fatos, provas e teses relevantes. Não escreva memoriais completos."),
-        Turn("defense_attorney", "Apresente oralmente as alegações finais da defesa, enfrentando fatos, provas e teses relevantes. Não escreva memoriais completos."),
-        Turn("judge", "Declare oralmente encerrados os debates e encaminhe o processo para deliberação ou sentença, conforme o rito."),
+        Turn("plaintiff_attorney", "Apresente alegações finais orais específicas deste processo, relacionando fatos, provas, depoimentos e teses jurídicas que realmente apareceram na audiência."),
+        Turn("defense_attorney", "Apresente alegações finais orais específicas deste processo, enfrentando as provas e argumentos produzidos na audiência e sustentando a tese da defesa."),
+        Turn("judge", "Encerre os debates reagindo ao que efetivamente foi dito pelas partes e encaminhe o processo para deliberação ou julgamento, sem antecipar a sentença."),
     ],
     CourtPhase.DELIBERATION: [
-        Turn("juror", "Delibere oralmente sobre fatos e provas, indicando de forma fundamentada os pontos provados ou não provados. Não produza documento judicial."),
-        Turn("judge", "Registre oralmente a deliberação e encaminhe o feito para a decisão cabível."),
+        Turn("juror", "Delibere sobre este processo concreto, analisando os fatos e provas efetivamente produzidos e explicando quais pontos considera provados ou não provados. Não invente fatos."),
+        Turn("judge", "Analise a deliberação produzida e encaminhe o feito para a decisão cabível, mencionando os pontos concretos que serão considerados."),
     ],
     CourtPhase.JUDGMENT: [
-        Turn("judge", "Agora, e somente nesta fase, produza a sentença ou decisão final fundamentada, enfrentando pedidos, argumentos, provas e questões processuais efetivamente registrados nos autos."),
+        Turn("judge", "Produza a sentença final deste processo somente agora. Enfrente os pedidos, fatos, provas, depoimentos, argumentos e questões processuais que efetivamente constam do histórico. A decisão deve ser específica para este caso e fundamentada, sem placeholders ou texto genérico."),
     ],
 }
 
 def next_agent_turn(session: CourtSession):
     turns = PHASE_TURNS.get(session.phase, [])
-    # O participante humano controla o próprio turno. Continuar julgamento
-    # nunca deve fazer a IA falar no lugar do usuário.
     while session.turn_index < len(turns):
         turn = turns[session.turn_index]
         if turn.role == session.user_role.value:

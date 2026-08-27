@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from typing import Protocol
 
+from .ai_providers import AIProvider, get_provider
 from .models import Process
 
 
@@ -24,25 +24,7 @@ class AgentResult:
     agent: str
     role: str
     content: str
-    status: str = "simulated"
-
-
-class AIProvider(Protocol):
-    def generate(self, *, system: str, prompt: str) -> str: ...
-
-
-class TemplateProvider:
-    """Fallback local provider used until a real AI provider is configured."""
-
-    def generate(self, *, system: str, prompt: str) -> str:
-        return (
-            "ANÁLISE PRELIMINAR\n\n"
-            "Esta manifestação é uma etapa técnica de demonstração do motor do Tribunal Virtual. "
-            "O caso recebido deve ser analisado à luz dos fatos apresentados, da legislação aplicável "
-            "e das provas que forem posteriormente juntadas ao processo.\n\n"
-            "Nenhuma conclusão jurídica definitiva foi produzida enquanto o provedor de IA e a base "
-            "jurídica verificável não estiverem configurados."
-        )
+    status: str = "generated"
 
 
 class PlaintiffAttorneyAgent:
@@ -50,19 +32,26 @@ class PlaintiffAttorneyAgent:
     role = "IA de argumentação"
 
     def __init__(self, provider: AIProvider | None = None):
-        self.provider = provider or TemplateProvider()
+        self.provider = provider or get_provider()
 
     def run(self, process: Process) -> AgentResult:
         system = (
-            "Você atua como advogado da parte autora em uma simulação educacional. "
-            "Não invente fatos, provas, leis ou jurisprudência. Diferencie fatos de argumentos."
+            "Você atua como advogado da parte autora em uma simulação educacional de direito brasileiro. "
+            "Não invente fatos, provas, leis, artigos ou jurisprudência. Separe fatos narrados, inferências "
+            "e argumentos. Quando não houver fonte verificável disponível, diga explicitamente que a fonte "
+            "precisa ser pesquisada. Não apresente a simulação como aconselhamento jurídico real."
         )
         prompt = (
-            f"Área: {process.area.value}\n"
+            f"Área jurídica: {process.area.value}\n"
             f"Autor: {process.plaintiff}\n"
             f"Réu: {process.defendant}\n"
-            f"Fatos: {process.facts}\n\n"
-            "Produza uma análise preliminar indicando fatos relevantes, possíveis pedidos "
-            "e pontos que precisam de comprovação."
+            f"Fatos narrados pelo usuário:\n{process.facts}\n\n"
+            "Estruture a manifestação em: 1) síntese dos fatos; 2) questões jurídicas a investigar; "
+            "3) possíveis teses do autor; 4) pedidos que poderiam ser considerados; 5) provas relevantes. "
+            "Não cite números de artigos sem ter a fonte jurídica disponível no contexto."
         )
-        return AgentResult(self.name, self.role, self.provider.generate(system=system, prompt=prompt))
+        return AgentResult(
+            self.name,
+            self.role,
+            self.provider.generate(system=system, prompt=prompt),
+        )

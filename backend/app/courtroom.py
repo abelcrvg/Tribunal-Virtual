@@ -54,7 +54,7 @@ def build_courtroom(include_mp: bool = False, jury: bool = False) -> list[Partic
         participants.insert(3, Participant(str(uuid4()), "Promotor de Justiça", ParticipantType.PROSECUTOR))
     if jury:
         participants.extend(
-            Participant(str(uuid4()), f"Juradoo {i:02d}", ParticipantType.JUROR)
+            Participant(str(uuid4()), f"Jurados {i:02d}", ParticipantType.JUROR)
             for i in range(1, 8)
         )
     return participants

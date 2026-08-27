@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from .case_memory import ProcessEvent, get_case_memory
 from .courtroom import assess_intervention
 from .database import get_db
 from .models import Process, ProcessCreate
@@ -17,6 +18,13 @@ class InterventionRequest(BaseModel):
     role: str = Field(min_length=2, max_length=80)
     turn_role: str = Field(min_length=2, max_length=80)
     content: str = Field(min_length=1, max_length=10000)
+
+
+class EventRequest(BaseModel):
+    type: str = Field(min_length=2, max_length=80)
+    actor: str = Field(min_length=2, max_length=120)
+    content: str = Field(min_length=1, max_length=10000)
+    relevance: str = Field(default="normal", max_length=20)
 
 
 def _get_process(process_id: UUID, db: Session) -> Process:
@@ -43,10 +51,25 @@ def get_process_by_id(process_id: UUID, db: Session = Depends(get_db)) -> Proces
     return _get_process(process_id, db)
 
 
+@router.get("/{process_id}/memory", tags=["courtroom"])
+def process_memory(process_id: UUID, db: Session = Depends(get_db)):
+    _get_process(process_id, db)
+    return get_case_memory(str(process_id)).context()
+
+
+@router.post("/{process_id}/memory/events", tags=["courtroom"])
+def record_process_event(process_id: UUID, data: EventRequest, db: Session = Depends(get_db)):
+    _get_process(process_id, db)
+    event = get_case_memory(str(process_id)).record(ProcessEvent(type=data.type, actor=data.actor, content=data.content, relevance=data.relevance))
+    return {"id": event.id, "recorded": event.recorded, "relevance": event.relevance}
+
+
 @router.post("/{process_id}/courtroom/intervention", tags=["courtroom"])
 def courtroom_intervention(process_id: UUID, data: InterventionRequest, db: Session = Depends(get_db)):
     _get_process(process_id, db)
     decision = assess_intervention(role=data.role, turn_role=data.turn_role, content=data.content)
+    if decision.requires_record:
+        get_case_memory(str(process_id)).record(ProcessEvent(type="intervention", actor=data.role, content=data.content, relevance=decision.assessment.value))
     return {
         "assessment": decision.assessment.value,
         "allowed": decision.allowed,

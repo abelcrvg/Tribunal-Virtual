@@ -95,9 +95,12 @@ def create_session(process_id:UUID,data:SessionCreate,db:Session=Depends(get_db)
         _sessions[key]=existing; _identities.setdefault(key,build_user_identity(data.user_id,data.role)); return {"session_id":key,"identity":_identities[key].__dict__,"role":data.role,"instance":existing.instance,"phase":existing.phase,"allowed_roles":list(existing.allowed_roles),"messages":existing.messages}
     s=CourtSession(id=key,process_id=str(process_id),user_role=data.role); _identities[key]=build_user_identity(data.user_id,data.role)
     judge=next((x for x in build_courtroom(include_mp=p.include_mp,jury=p.jury,instance=Instance.FIRST) if x.role==UserRole.JUDGE),None); name=judge.name if judge else "Magistrado"
-    m=s.add_message(name,MessageKind.RULING,"Declaro aberta a sessão. As partes deverão observar a ordem de fala e a urbanidade.",UserRole.JUDGE); _persist_message(db,str(process_id),m)
+    participant_name=_identities[key].display_name
+    role_label={UserRole.JUDGE:"Magistrado",UserRole.PLAINTIFF:"Parte autora",UserRole.DEFENDANT:"Parte ré",UserRole.PLAINTIFF_ATTORNEY:"Advogado(a) do Autor",UserRole.DEFENSE_ATTORNEY:"Advogado(a) do Réu",UserRole.PROSECUTOR:"Promotor(a) de Justiça",UserRole.LEGAL_RESEARCHER:"Pesquisador(a) Jurídico(a)",UserRole.WITNESS:"Testemunha",UserRole.EXPERT:"Perito(a) Judicial",UserRole.JUROR:"Jurado(a)",UserRole.CLERK:"Servidor(a) da Secretaria"}.get(data.role,data.role.value)
+    opening=f"Declaro aberta a sessão. O participante {participant_name} atuará nesta simulação na qualidade de {role_label}. As partes deverão observar a ordem de fala e a urbanidade."
+    m=s.add_message(name,MessageKind.RULING,opening,UserRole.JUDGE); _persist_message(db,str(process_id),m)
     s.turn_index=1
-    m=s.add_message("Sistema",MessageKind.SYSTEM,f"Sessão iniciada para {_identities[key].display_name}. O debate é livre; intervenções relevantes fora da vez poderão ser apreciadas."); _persist_message(db,str(process_id),m); _sessions[key]=s; store.add(str(process_id),"session_opened",name,"Sessão aberta","pertinent")
+    m=s.add_message("Sistema",MessageKind.SYSTEM,f"Participante da sessão: {participant_name} · {role_label}. O debate é livre; intervenções relevantes fora da vez poderão ser apreciadas."); _persist_message(db,str(process_id),m); _sessions[key]=s; store.add(str(process_id),"session_opened",name,"Sessão aberta","pertinent")
     return {"session_id":key,"identity":_identities[key].__dict__,"role":data.role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages}
 
 @router.get("/participants")

@@ -27,6 +27,15 @@ class ProcessCreate(BaseModel):
     plaintiff: str = Field(min_length=2, max_length=200)
     defendant: str = Field(min_length=2, max_length=200)
     facts: str = Field(min_length=20, max_length=10000)
+    include_mp: bool = False
+
+
+class CharacterResponse(BaseModel):
+    name: str
+    title: str
+    profession: str
+    role: str
+    fictional: bool = True
 
 
 class Process(ProcessCreate):
@@ -34,3 +43,4 @@ class Process(ProcessCreate):
     number: str
     status: ProcessStatus = ProcessStatus.CREATED
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    characters: list[CharacterResponse] = Field(default_factory=list)

@@ -96,7 +96,7 @@ def _append_ai_result(db:Session,s:CourtSession,process_id:str,result):
     return msg
 
 def _run_one_agent(db:Session,s:CourtSession,process_id:str,process):
-    result=run_next_agent(process and process, s)
+    result=run_next_agent(process,s)
     return _append_ai_result(db,s,process_id,result) if result else None
 
 @router.post("/session")
@@ -131,28 +131,27 @@ def get_session(process_id:UUID,role:UserRole,db:Session=Depends(get_db)):
 def send_message(process_id:UUID,role:UserRole,data:MessageCreate,db:Session=Depends(get_db)):
     s=_session(process_id,role,db)
     expected=peek_turn(s); expected_role=expected.role if expected else None
-    text=data.content.strip().lower(); normalized=" ".join(text.rstrip("?!., ").split())
-    courtesy=normalized in {"posso falar meritissimo","posso falar, meritissimo","posso falar meritíssimo","posso falar, meritíssimo","boa tarde","bom dia","boa noite","olá","ola","ok"}
-    if role.value != expected_role and courtesy:
-        identity=_identities.get(s.id); sender=identity.display_name if identity else role.value; m=s.add_message(sender,MessageKind.USER,data.content,role,"pertinent"); _persist_message(db,str(process_id),m)
-        response="Pode formular sua manifestação, desde que pertinente e respeitada a ordem dos trabalhos." if normalized.startswith("posso falar") else "Registrado. Aguarde a palavra ou utilize a manifestação quando o juízo a conceder."
-        r=s.add_message("Magistrado",MessageKind.RULING,response,UserRole.JUDGE,"procedural"); _persist_message(db,str(process_id),r)
-        return {"accepted":True,"message":m,"ruling":r,"exception":False,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"expected_role":expected_role}
-    preliminary=assess_intervention(role=role.value,turn_role=expected_role or "none",content=data.content); facts=get_case_memory(str(process_id)).context(); history=[str(x) for x in s.messages]; judicial=review_intervention(content=data.content,assessment=preliminary.assessment.value,facts=facts,history=history,phase=s.phase.value)
-    allowed=role.value==expected_role
-    if not allowed:
-        if preliminary.assessment.value in {"pertinent","decisive"}:
-            identity=_identities.get(s.id); sender=identity.display_name if identity else role.value; m=s.add_message(sender,MessageKind.USER,data.content,role,preliminary.assessment.value); _persist_message(db,str(process_id),m); r=s.add_message("Magistrado",MessageKind.RULING,"A intervenção foi registrada por sua pertinência, mas a palavra permanece com o participante designado para este ato.",UserRole.JUDGE,preliminary.assessment.value); _persist_message(db,str(process_id),r); return {"accepted":True,"message":m,"ruling":r,"exception":True,"judicial_review":judicial.__dict__,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"expected_role":expected_role}
-        m=s.reprimand(); _persist_message(db,str(process_id),m); return {"accepted":False,"message":m,"reason":"out_of_turn","judicial_review":judicial.__dict__,"allowed_roles":list(s.allowed_roles),"expected_role":expected_role}
-    identity=_identities.get(s.id); sender=identity.display_name if identity else role.value; m=s.add_message(sender,MessageKind.USER,data.content,role,preliminary.assessment.value); _persist_message(db,str(process_id),m); store.add(str(process_id),"hearing_message",sender,data.content,preliminary.assessment.value); s.accept_turn()
-    # A user message is itself the trigger for the next AI intervention.
+    preliminary=assess_intervention(role=role.value,turn_role=expected_role or "none",content=data.content)
+    facts=get_case_memory(str(process_id)).context(); history=[f"{m.sender} [{m.role.value if m.role else 'system'}]: {m.content}" for m in s.messages]
+    judicial=review_intervention(content=data.content,assessment=preliminary.assessment.value,facts=facts,history=history,phase=s.phase.value)
+    identity=_identities.get(s.id); sender=identity.display_name if identity else role.value
+    m=s.add_message(sender,MessageKind.USER,data.content,role,preliminary.assessment.value); _persist_message(db,str(process_id),m); store.add(str(process_id),"hearing_message",sender,data.content,preliminary.assessment.value)
+    # Intervenção humana nunca é bloqueada. Se for o turno de outra personagem,
+    # ela continua podendo responder imediatamente àquilo que foi dito.
+    was_scheduled_turn=(role.value==expected_role)
+    if was_scheduled_turn:
+        s.accept_turn()
     process=_process(process_id,db)
-    next_turn=next_agent_turn(s)
     ai_message=None
+    next_turn=next_agent_turn(s)
     if next_turn is not None:
         try: ai_message=_run_one_agent(db,s,str(process_id),process)
         except Exception as exc: raise HTTPException(502,f"Falha no agente de IA: {exc}") from exc
-    return {"accepted":True,"message":m,"ruling":ai_message,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"assessment":preliminary.assessment.value,"expected_role":expected_role}
+    else:
+        # Se a fala humana fechou a etapa, o botão Continuar continuará podendo
+        # avançar posteriormente; não forçamos uma nova fase neste endpoint.
+        ai_message=None
+    return {"accepted":True,"message":m,"ruling":ai_message,"exception":not was_scheduled_turn,"judicial_review":judicial.__dict__,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"assessment":preliminary.assessment.value,"expected_role":expected_role}
 
 @router.post("/session/{role}/agents")
 def agent_message(process_id:UUID,role:UserRole,data:AgentCreate,db:Session=Depends(get_db)):

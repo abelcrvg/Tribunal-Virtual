@@ -24,6 +24,13 @@ class ProcessStatus(str, Enum):
     CLOSED = "closed"
 
 
+class CaseGenerationRequest(BaseModel):
+    area: CaseArea
+    case_type: str = Field(default="Aleatório", min_length=2, max_length=100)
+    include_mp: bool = False
+    jury: bool = False
+
+
 class ProcessCreate(BaseModel):
     area: CaseArea
     plaintiff: str = Field(min_length=2, max_length=200)

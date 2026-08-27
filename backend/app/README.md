@@ -1,0 +1,1 @@
+O motor processual será desenvolvido aqui. As regras de negócio devem permanecer independentes do provedor de IA.

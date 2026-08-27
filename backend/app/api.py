@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .case_memory import ProcessEvent, get_case_memory
+from .chat import submit_message
 from .courtroom import assess_intervention
 from .database import get_db
 from .models import Process, ProcessCreate
@@ -25,6 +26,13 @@ class EventRequest(BaseModel):
     actor: str = Field(min_length=2, max_length=120)
     content: str = Field(min_length=1, max_length=10000)
     relevance: str = Field(default="normal", max_length=20)
+
+
+class ChatRequest(BaseModel):
+    role: str = Field(min_length=2, max_length=80)
+    turn_role: str = Field(min_length=2, max_length=80)
+    actor: str = Field(min_length=2, max_length=120)
+    content: str = Field(min_length=1, max_length=10000)
 
 
 def _get_process(process_id: UUID, db: Session) -> Process:
@@ -62,6 +70,24 @@ def record_process_event(process_id: UUID, data: EventRequest, db: Session = Dep
     _get_process(process_id, db)
     event = get_case_memory(str(process_id)).record(ProcessEvent(type=data.type, actor=data.actor, content=data.content, relevance=data.relevance))
     return {"id": event.id, "recorded": event.recorded, "relevance": event.relevance}
+
+
+@router.post("/{process_id}/chat", tags=["courtroom"])
+def courtroom_chat(process_id: UUID, data: ChatRequest, db: Session = Depends(get_db)):
+    _get_process(process_id, db)
+    message = submit_message(process_id=str(process_id), role=data.role, turn_role=data.turn_role, actor=data.actor, content=data.content)
+    decision = assess_intervention(role=data.role, turn_role=data.turn_role, content=data.content)
+    return {
+        "id": message.id,
+        "accepted": message.accepted,
+        "assessment": message.assessment,
+        "actor": message.actor,
+        "content": message.content,
+        "judge_response": decision.judge_response,
+        "requires_record": decision.requires_record,
+        "reason": decision.reason,
+        "created_at": message.created_at,
+    }
 
 
 @router.post("/{process_id}/courtroom/intervention", tags=["courtroom"])

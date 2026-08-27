@@ -8,11 +8,13 @@ from .case_memory import get_case_memory
 from .court_session import CourtPhase, CourtSession, MessageKind
 from .courtroom import Instance, UserRole, build_courtroom
 from .hearing_orchestrator import run_next_agent
+from .participant_identity import build_user_identity
 from .processes import get_process
 
 router=APIRouter(prefix="/api/v1/processes/{process_id}/courtroom",tags=["courtroom"])
 _sessions:dict[str,CourtSession]={}
-class SessionCreate(BaseModel): role:UserRole
+_identities={}
+class SessionCreate(BaseModel): role:UserRole; user_id:str=Field(default="local-user",min_length=1,max_length=120)
 class MessageCreate(BaseModel): content:str=Field(min_length=1,max_length=10000)
 class AgentCreate(BaseModel): role:UserRole; sender:str=Field(min_length=2,max_length=120); content:str=Field(min_length=1,max_length=10000)
 class AppealCreate(BaseModel): type:str=Field(min_length=2,max_length=100); reason:str=Field(min_length=10,max_length=5000)
@@ -24,13 +26,11 @@ def _session(pid:UUID,role:UserRole):
 def create_session(process_id:UUID,data:SessionCreate):
     p=get_process(process_id)
     if p is None: raise HTTPException(404,"Processo não encontrado")
-    key=f"{process_id}:{data.role.value}"; s=CourtSession(id=key,process_id=str(process_id),user_role=data.role)
-    judge=next((x for x in build_courtroom(include_mp=p.include_mp,jury=p.area.value=="criminal",instance=Instance.FIRST) if x.role==UserRole.JUDGE),None)
-    name=judge.name if judge else "Magistrado"
-    s.add_message(name,MessageKind.RULING,"Declaro aberta a sessão. As partes deverão observar a ordem de fala e a urbanidade.",UserRole.JUDGE)
-    s.add_message("Sistema",MessageKind.SYSTEM,"O debate é livre. Intervenções relevantes fora da vez poderão ser submetidas à apreciação do juízo.")
+    key=f"{process_id}:{data.role.value}"; s=CourtSession(id=key,process_id=str(process_id),user_role=data.role); _identities[key]=build_user_identity(data.user_id,data.role)
+    judge=next((x for x in build_courtroom(include_mp=p.include_mp,jury=p.area.value=="criminal",instance=Instance.FIRST) if x.role==UserRole.JUDGE),None); name=judge.name if judge else "Magistrado"
+    s.add_message(name,MessageKind.RULING,"Declaro aberta a sessão. As partes deverão observar a ordem de fala e a urbanidade.",UserRole.JUDGE); s.add_message("Sistema",MessageKind.SYSTEM,f"Sessão iniciada para { _identities[key].display_name }. O debate é livre; intervenções relevantes fora da vez poderão ser apreciadas.")
     _sessions[key]=s; store.add(str(process_id),"session_opened",name,"Sessão aberta","pertinent")
-    return {"session_id":key,"role":data.role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages}
+    return {"session_id":key,"identity":_identities[key].__dict__,"role":data.role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages}
 @router.get("/participants")
 def participants(process_id:UUID,instance:Instance=Instance.FIRST):
     p=get_process(process_id)
@@ -38,14 +38,14 @@ def participants(process_id:UUID,instance:Instance=Instance.FIRST):
     return {"instance":instance,"participants":[x.__dict__ for x in build_courtroom(include_mp=p.include_mp,jury=p.area.value=="criminal",instance=instance)]}
 @router.get("/session/{role}")
 def get_session(process_id:UUID,role:UserRole):
-    s=_session(process_id,role); return {"session_id":s.id,"role":s.user_role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages,"appeals":s.appeals}
+    s=_session(process_id,role); identity=_identities.get(s.id); return {"session_id":s.id,"identity":identity.__dict__ if identity else None,"role":s.user_role,"instance":s.instance,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"messages":s.messages,"appeals":s.appeals}
 @router.post("/session/{role}/messages")
 def send_message(process_id:UUID,role:UserRole,data:MessageCreate):
     s=_session(process_id,role); from .courtroom import assess_intervention
     turn=next(iter(s.allowed_roles)).value if s.allowed_roles else "none"; d=assess_intervention(role=role.value,turn_role=turn,content=data.content)
     if role not in s.allowed_roles and d.assessment.value not in {"pertinent","decisive"}:
         m=s.reprimand(); store.add(str(process_id),"reprimand","Magistrado",m.content,"normal"); return {"accepted":False,"message":m,"reason":"out_of_turn","allowed_roles":list(s.allowed_roles),"assessment":d.assessment.value}
-    m=s.add_message(role.value,MessageKind.USER,data.content,role,d.assessment.value); store.add(str(process_id),"hearing_message",role.value,data.content,d.assessment.value)
+    identity=_identities.get(s.id); sender=identity.display_name if identity else role.value; m=s.add_message(sender,MessageKind.USER,data.content,role,d.assessment.value); store.add(str(process_id),"hearing_message",sender,data.content,d.assessment.value)
     if role not in s.allowed_roles:
         r=s.add_message("Magistrado",MessageKind.RULING,"A intervenção apresenta pertinência com a controvérsia. A palavra é concedida e a manifestação será registrada.",UserRole.JUDGE,d.assessment.value); return {"accepted":True,"message":m,"ruling":r,"exception":True,"assessment":d.assessment.value,"phase":s.phase,"allowed_roles":list(s.allowed_roles)}
     s.accept_turn(); return {"accepted":True,"message":m,"phase":s.phase,"allowed_roles":list(s.allowed_roles),"assessment":d.assessment.value}
@@ -53,8 +53,7 @@ def send_message(process_id:UUID,role:UserRole,data:MessageCreate):
 def agent_message(process_id:UUID,role:UserRole,data:AgentCreate):
     s=_session(process_id,role)
     if data.role not in s.allowed_roles: raise HTTPException(400,f"O papel {data.role.value} não possui a palavra nesta fase.")
-    context=get_case_memory(str(process_id)).context(); instruction=build_agent_instruction(s,data.role,context); reply=register_agent_reply(s,data.role,data.sender,data.content)
-    s.accept_turn(); return {"message":reply.__dict__,"instruction_context":instruction,"phase":s.phase,"allowed_roles":list(s.allowed_roles)}
+    context=get_case_memory(str(process_id)).context(); instruction=build_agent_instruction(s,data.role,context); reply=register_agent_reply(s,data.role,data.sender,data.content); s.accept_turn(); return {"message":reply.__dict__,"instruction_context":instruction,"phase":s.phase,"allowed_roles":list(s.allowed_roles)}
 @router.post("/session/{role}/agents/next")
 def automatic_agent_turn(process_id:UUID,role:UserRole):
     s=_session(process_id,role); p=get_process(process_id)

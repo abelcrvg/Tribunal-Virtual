@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import router as process_router
+from .database import Base, engine
+from . import db_models  # noqa: F401
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Tribunal Virtual API",

@@ -22,19 +22,15 @@ def assess_intervention(*, role: str, turn_role: str, content: str) -> Courtroom
     text = content.strip().lower()
     if not text:
         return CourtroomDecision(InterventionAssessment.IRRELEVANT, False, "A intervenção não contém conteúdo suficiente para análise.", False, "mensagem vazia")
-
-    relevant_terms = ("documento", "prova", "testemunha", "contrato", "laudo", "artigo", "lei", "fato", "depoimento", "contradi", "omiss", "processo")
-    is_relevant = any(term in text for term in relevant_terms) or len(text) >= 120
-    abusive_markers = ("idiota", "cala a boca", "mentiroso", "mentirosa")
-    is_abusive = any(term in text for term in abusive_markers)
-
-    if is_abusive:
-        return CourtroomDecision(InterventionAssessment.ABUSIVE, False, "A parte deve manter o respeito e a urbanidade. A intervenção não será considerada nestes termos.", False, "linguagem incompatível com a sessão")
-
+    abusive_markers = ("idiota", "cala a boca", "vai se ferrar", "filho da", "otário", "otaria")
+    if any(term in text for term in abusive_markers):
+        return CourtroomDecision(InterventionAssessment.ABUSIVE, False, "A parte deve manter o respeito e a urbanidade. Evite novas intervenções dessa natureza.", False, "linguagem incompatível com a sessão")
+    relevant_terms = ("documento", "prova", "testemunha", "contrato", "laudo", "artigo", "lei", "fato", "depoimento", "contradi", "omiss", "processo", "prazo", "competência", "nulidade", "evidência", "perícia")
+    is_relevant = any(term in text for term in relevant_terms) or len(text) >= 160
     if turn_role == role:
         return CourtroomDecision(InterventionAssessment.PERTINENT if is_relevant else InterventionAssessment.IRRELEVANT, True, "A palavra está com a parte. Prossiga com sua manifestação.", is_relevant, "manifestação dentro da vez")
-
     if is_relevant:
-        return CourtroomDecision(InterventionAssessment.DECISIVE if len(text) >= 220 else InterventionAssessment.PERTINENT, True, "A intervenção, embora realizada fora da ordem de fala, apresenta pertinência com a controvérsia. A palavra é concedida para esclarecimento.", True, "exceção por relevância processual")
-
+        decisive_markers = ("contradiz", "prova que", "demonstra que", "documento original", "falsidade", "incompatível", "erro material", "omissão relevante", "nulidade")
+        assessment = InterventionAssessment.DECISIVE if any(term in text for term in decisive_markers) or len(text) >= 320 else InterventionAssessment.PERTINENT
+        return CourtroomDecision(assessment, True, "A intervenção, embora realizada fora da ordem de fala, apresenta pertinência com a controvérsia. A palavra é concedida para esclarecimento e a manifestação será registrada nos autos.", True, "exceção por relevância processual")
     return CourtroomDecision(InterventionAssessment.IRRELEVANT, False, "A palavra permanece com a parte que está se manifestando. A intervenção não apresenta, neste momento, pertinência suficiente para alterar a ordem da audiência.", False, "fora da vez e sem relevância identificada")

@@ -86,6 +86,9 @@ class CourtSession:
     messages: list[ChatMessage] = field(default_factory=list)
     appeals: list[Appeal] = field(default_factory=list)
     reprimands: int = 0
+    turn_index: int = 0
+    consecutive_invalid: int = 0
+    suspended: bool = False
 
     @property
     def allowed_roles(self) -> set[UserRole]:
@@ -98,11 +101,18 @@ class CourtSession:
 
     def reprimand(self) -> ChatMessage:
         self.reprimands += 1
-        if self.reprimands >= 3:
-            text = "A parte já foi advertida reiteradamente. Nova intervenção sem pertinência poderá ser desconsiderada pelo juízo."
+        self.consecutive_invalid += 1
+        if self.consecutive_invalid >= 3:
+            text = "A parte já foi advertida reiteradamente. O juízo determina que novas intervenções sem pertinência sejam desconsideradas, sem prejuízo da apreciação de questão processual relevante."
+        elif self.consecutive_invalid == 2:
+            text = "A parte está advertida. Aguarde sua vez e formule eventual questão processual de maneira objetiva."
         else:
             text = "Peço ordem. Sua intervenção não está autorizada nesta fase. Se houver questão processual relevante, apresente-a objetivamente para apreciação do juízo."
         return self.add_message("Magistrado", MessageKind.RULING, text, UserRole.JUDGE, "procedural")
+
+    def accept_turn(self) -> None:
+        self.consecutive_invalid = 0
+        self.turn_index += 1
 
     def file_appeal(self, appeal_type: str, reason: str) -> Appeal:
         if self.user_role not in APPEAL_ROLES:
